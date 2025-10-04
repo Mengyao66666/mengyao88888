@@ -72,7 +72,7 @@ def conv2d(X, W, bias):
             for out_w in nl.affine_range(out_pool_width):
 
                 # Allocate a tensor in PSUM
-                res_psum = nl.zeros((out_channels,), dtype=nl.float32, buffer=nl.psum)
+                res_psum = nl.zeros((out_channels, 1), dtype=nl.float32, buffer=nl.psum)
 
                 # 所有窗口都加载到SBUF，并且展开。每一行都是in_channels * filter_height * filter_width的长度，然后展开
                 x_flat = nl.load(X[b, :, out_h:out_h + filter_height, out_w:out_w + filter_width]).reshape(-1)
@@ -84,9 +84,9 @@ def conv2d(X, W, bias):
                 print(
                     f"[DEBUG]     batch={b}, h={out_h}, w={out_w}: matmul done, res_psum shape={res_psum.shape}")
 
-                res_psum[:] = res_psum[:] + bias[:]
+                res_psum[:, 0] = res_psum[:, 0] + bias[:]
 
-                res_sb = nl.copy(res_psum, dtype=X_out.dtype)
+                res_sb = nl.copy(res_psum[:, 0], dtype=X_out.dtype)
                 print(f"[DEBUG]     batch={b}, h={out_h}, w={out_w}: copied to SBUF")
                 nl.store(X_out[b, :, out_h, out_w], value=res_sb)
                 print(f"[DEBUG]     batch={b}, h={out_h}, w={out_w}: stored to HBM ✓")
