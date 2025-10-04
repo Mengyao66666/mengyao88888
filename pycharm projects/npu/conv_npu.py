@@ -77,26 +77,36 @@ def conv2d(X, W, bias):
         )
         x_tile[...] = nl.load(X[b,:,:,:])
 
+        out_tile = nl.ndarray(
+            (out_channels, out_pool_height, out_pool_width),
+            dtype=nl.float32,
+            buffer=nl.sbuf
+        )
+
         for out_h in nl.affine_range(out_pool_height):
             for out_w in nl.affine_range(out_pool_width):
                 for out_c in nl.affine_range(out_channels):
                     # Allocate a tensor in PSUM
-                    res_psum = nl.zeros((1, 1), dtype=nl.float32, buffer=nl.psum)
+                    # res_psum = nl.zeros((1, 1), dtype=nl.float32, buffer=nl.psum)
 
-                    x_flat = x_tile[:, out_h:out_h + filter_height, out_w:out_w + filter_width]
-                    x_flat = x_flat.reshape(in_channels * filter_height * filter_width, 1)
+                    x_flat = x_tile[:, out_h:out_h + filter_height, out_w:out_w + filter_width].reshape(-1)
+                    # x_flat = x_flat.reshape(in_channels * filter_height * filter_width)
 
-                    w_flat = W[out_c].reshape(1, in_channels * filter_height * filter_width)
-                    res_psum[out_c] += nl.matmul(w_flat, x_flat)
-                print(
-                    f"[DEBUG]     batch={b}, h={out_h}, w={out_w}: matmul done, res_psum shape={res_psum.shape}")
+                    w_flat = W[out_c].reshape(-1)
 
-                res_psum[:, 0] = res_psum[:, 0] + bias[:]
+                    out_tile[out_c, out_h, out_w] = nl.dot(w_flat, x_flat) + bias[out_c]
 
-                res_sb = nl.copy(res_psum[:, 0], dtype=X_out.dtype)
-                print(f"[DEBUG]     batch={b}, h={out_h}, w={out_w}: copied to SBUF")
-                nl.store(X_out[b, :, out_h, out_w], value=res_sb)
-                print(f"[DEBUG]     batch={b}, h={out_h}, w={out_w}: stored to HBM ✓")
+        X_out[b, :, :, :] = out_tile
+                    # res_psum[out_c] += nl.matmul(w_flat, x_flat)
+                # print(
+                #     f"[DEBUG]     batch={b}, h={out_h}, w={out_w}: matmul done, res_psum shape={res_psum.shape}")
+
+                # res_psum[:, 0] = res_psum[:, 0] + bias[:]
+                #
+                # res_sb = nl.copy(res_psum[:, 0], dtype=X_out.dtype)
+                # print(f"[DEBUG]     batch={b}, h={out_h}, w={out_w}: copied to SBUF")
+                # nl.store(X_out[b, :, out_h, out_w], value=res_sb)
+                # print(f"[DEBUG]     batch={b}, h={out_h}, w={out_w}: stored to HBM ✓")
 
         print(f"[DEBUG] Batch {b} COMPLETED")
 
