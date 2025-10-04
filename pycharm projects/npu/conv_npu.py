@@ -73,8 +73,8 @@ def conv2d(X, W, bias):
     )
     W_tile[...] = nl.load(W[:, :, :, :])
 
-    bias_tile = nl.ndarray((out_channels,), dtype=bias.dtype, buffer=nl.sbuf)
-    bias_tile[...] = nl.load(bias[:])
+    bias_tile = nl.ndarray((out_channels, 1), dtype=bias.dtype, buffer=nl.sbuf)
+    bias_tile[...] = nl.load(bias[:, None])
 
     # Process the images in batches
     for b in nl.affine_range(batch_size):
@@ -112,7 +112,7 @@ def conv2d(X, W, bias):
                         for fh in nl.affine_range(filter_height):
                             for fw in nl.affine_range(filter_width):
                                 acc += W_tile[out_c, ic, fh, fw] * x_tile[ic, out_h + fh, out_w + fw]
-                    out_tile[out_c, out_h, out_w] = acc + bias_tile[out_c]
+                    out_tile[out_c, out_h, out_w] = acc + bias_tile[out_c, 0]
 
         X_out[b, :, :, :] = out_tile
                     # res_psum[out_c] += nl.matmul(w_flat, x_flat)
