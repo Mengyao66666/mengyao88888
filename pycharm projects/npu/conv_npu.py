@@ -75,7 +75,13 @@ def conv2d(X, W, bias):
                 res_psum = nl.zeros((out_channels, 1), dtype=nl.float32, buffer=nl.psum)
 
                 # 所有窗口都加载到SBUF，并且展开。每一行都是in_channels * filter_height * filter_width的长度，然后展开
-                x_flat = nl.load(X[b, :, out_h:out_h + filter_height, out_w:out_w + filter_width]).reshape(-1)
+                x_tile = nl.ndarray(
+                    (in_channels, input_height, input_width),
+                    dtype=X.dtype,
+                    buffer=nl.sbuf
+                )
+                x_tile[...] = nl.load(X[b, :, :, :])
+                x_flat = x_tile.reshape(-1, 1)
                 print(f"[DEBUG]     batch={b}, h={out_h}, w={out_w}: window loaded, shape={x_flat.shape}")
 
                 for out_c in nl.affine_range(out_channels):
@@ -95,36 +101,6 @@ def conv2d(X, W, bias):
 
     print(f"[DEBUG] All batches COMPLETED, returning X_out")
     return X_out
-
-# def kernel(X, W, bias):
-#     batch_size, in_channels, input_height, input_width = X.shape
-#     out_channels, in_channels_, filter_height, filter_width = W.shape
-#     batch_size = 1
-#     # out_channels_ = bias.shape[0]
-#
-#     # 定义遍历范围
-#     out_height = input_height - filter_height + 1
-#     out_width = input_width - filter_width + 1
-#
-#     # 定义输出
-#     output = nl.ndarray([out_channels, out_height, out_width], dtype=X.dtype, buffer=nl.psum)
-#
-#     # 直接卷积
-#     for out_h in nl.affine_range(out_height):
-#         for out_w in nl.affine_range(out_width):
-#
-#             # Allocate a tensor in PSUM
-#             res_psum = nl.zeros((out_channels,), dtype=nl.float32, buffer=nl.psum)
-#
-#             # 所有窗口都加载到SBUF，并且展开。每一行都是in_channels * filter_height * filter_width的长度，然后展开
-#             x_flat = nl.load(X[:, :, out_h:out_h + filter_height, out_w:out_w + filter_width]).reshape(-1)
-#
-#             for out_c in nl.affine_range(out_channels):
-#                 w_flat = W[out_c].reshape(in_channels * filter_height * filter_width)
-#                 res_psum[out_c] += nl.mutmul(w_flat, x_flat)
-#
-#             res_sb = nl.copy(res_psum, dtype=output.dtype)
-#             nl.store(output[:, :, out_h, out_w], value=res_sb)
 
 
 
