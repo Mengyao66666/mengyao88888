@@ -105,7 +105,7 @@ def conv2d(X, W, bias):
                     # w_flat = W[out_c].reshape(-1)
                     #
                     # out_tile[out_c, out_h, out_w] = nl.dot(w_flat, x_flat) + bias[out_c]
-                    acc = nl.zeros((1,1), dtype=nl.float32, buffer=nl.psum)
+                    acc = nl.ndarray((1,1), dtype=nl.float32, buffer=nl.sbuf)
 
                     # 直接三重循环做 dot：W[out_c, ic, fh, fw] · X[ic, out_h+fh, out_w+fw]
                     for ic in nl.affine_range(in_channels):
