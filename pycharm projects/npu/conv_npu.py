@@ -80,12 +80,12 @@ def conv2d(X, W, bias):
                     dtype=X.dtype,
                     buffer=nl.sbuf
                 )
-                x_tile[...] = nl.load(X[b, :, :, :])
-                x_flat = x_tile.reshape(-1, 1)
+                x_tile[...] = nl.load(X[b, :, out_h:out_h + filter_height, out_w:out_w + filter_width])
+                x_flat = x_tile.reshape(in_channels * filter_height * filter_width, 1)
                 print(f"[DEBUG]     batch={b}, h={out_h}, w={out_w}: window loaded, shape={x_flat.shape}")
 
                 for out_c in nl.affine_range(out_channels):
-                    w_flat = W[out_c].reshape(in_channels * filter_height * filter_width)
+                    w_flat = W[out_c].reshape(1, in_channels * filter_height * filter_width)
                     res_psum[out_c] += nl.mutmul(w_flat, x_flat)
                 print(
                     f"[DEBUG]     batch={b}, h={out_h}, w={out_w}: matmul done, res_psum shape={res_psum.shape}")
