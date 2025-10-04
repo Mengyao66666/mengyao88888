@@ -68,25 +68,26 @@ def conv2d(X, W, bias):
 
     # Process the images in batches
     for b in nl.affine_range(batch_size):
+
+        # 所有窗口都加载到SBUF，并且展开。每一行都是in_channels * filter_height * filter_width的长度，然后展开
+        x_tile = nl.ndarray(
+            (in_channels, input_height, input_width),
+            dtype=X.dtype,
+            buffer=nl.sbuf
+        )
+        x_tile[...] = nl.load(X[b,:,:,:])
+
         for out_h in nl.affine_range(out_pool_height):
             for out_w in nl.affine_range(out_pool_width):
-
-                # Allocate a tensor in PSUM
-                res_psum = nl.zeros((out_channels, 1), dtype=nl.float32, buffer=nl.psum)
-
-                # 所有窗口都加载到SBUF，并且展开。每一行都是in_channels * filter_height * filter_width的长度，然后展开
-                x_tile = nl.ndarray(
-                    (in_channels, input_height, input_width),
-                    dtype=X.dtype,
-                    buffer=nl.sbuf
-                )
-                x_tile[...] = nl.load(X[b, :, out_h:out_h + filter_height, out_w:out_w + filter_width])
-                x_flat = x_tile.reshape(in_channels * filter_height * filter_width, 1)
-                print(f"[DEBUG]     batch={b}, h={out_h}, w={out_w}: window loaded, shape={x_flat.shape}")
-
                 for out_c in nl.affine_range(out_channels):
+                    # Allocate a tensor in PSUM
+                    res_psum = nl.zeros((1, 1), dtype=nl.float32, buffer=nl.psum)
+
+                    x_flat = x_tile[:, out_h:out_h + filter_height, out_w:out_w + filter_width]
+                    x_flat = x_flat.reshape(in_channels * filter_height * filter_width, 1)
+
                     w_flat = W[out_c].reshape(1, in_channels * filter_height * filter_width)
-                    res_psum[out_c] += nl.mutmul(w_flat, x_flat)
+                    res_psum[out_c] += nl.matmul(w_flat, x_flat)
                 print(
                     f"[DEBUG]     batch={b}, h={out_h}, w={out_w}: matmul done, res_psum shape={res_psum.shape}")
 
