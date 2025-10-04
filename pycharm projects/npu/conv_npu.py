@@ -108,10 +108,11 @@ def conv2d(X, W, bias):
                     acc = nl.ndarray((1,1), dtype=nl.float32, buffer=nl.sbuf)
 
                     # 直接三重循环做 dot：W[out_c, ic, fh, fw] · X[ic, out_h+fh, out_w+fw]
-                    for ic in nl.affine_range(in_channels):
-                        for fh in nl.affine_range(filter_height):
-                            for fw in nl.affine_range(filter_width):
-                                acc[0,0] += W_tile[out_c, ic, fh, fw] * x_tile[ic, out_h + fh, out_w + fw]
+                    for ic in nl.sequential_range(in_channels):
+                        for fh in nl.nl.sequential_range(filter_height):
+                            for fw in nl.nl.sequential_range(filter_width):
+                                t = W_tile[out_c, ic, fh, fw] * x_tile[ic, out_h + fh, out_w + fw]
+                                acc[0, 0] += t
                     out_tile[out_c, out_h, out_w] = acc[0,0] + bias_tile[out_c, 0]
 
         X_out[b, :, :, :] = out_tile
