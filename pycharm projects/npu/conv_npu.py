@@ -93,9 +93,9 @@ def conv2d(X, W, bias):
             buffer=nl.sbuf
         )
 
-        for out_h in nl.affine_range(out_pool_height):
-            for out_w in nl.affine_range(out_pool_width):
-                for out_c in nl.affine_range(out_channels):
+        for out_h in nl.sequential_range(out_pool_height):
+            for out_w in nl.sequential_range(out_pool_width):
+                for out_c in nl.sequential_range(out_channels):
                     # Allocate a tensor in PSUM
                     # res_psum = nl.zeros((1, 1), dtype=nl.float32, buffer=nl.psum)
 
