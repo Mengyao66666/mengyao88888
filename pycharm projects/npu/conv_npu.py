@@ -69,9 +69,8 @@ def conv2d(X, W, bias):
     )
     W_tile[...] = nl.load(W[:, :, :, :])
 
-    bias_tile = nl.ndarray((out_channels, 1), dtype=bias.dtype, buffer=nl.sbuf)
-    i_oc = nl.arange(out_channels)
-    bias_tile[i_oc, 0] = nl.load(bias[i_oc])
+    bias_tile = nl.ndarray((out_channels,), dtype=bias.dtype, buffer=nl.sbuf)
+    bias_tile[...] = nl.load(bias[:])
 
     # bias_tile = nl.ndarray((out_channels,), dtype=bias.dtype, buffer=nl.sbuf)
     # bias_tile[...] = nl.load(bias[:])
@@ -131,18 +130,26 @@ def conv2d(X, W, bias):
                             input_slice[input_mgrid.p, input_mgrid.x]
                         )
 
-                        # Accumulate to PSUM
                         result_mgrid = nl.mgrid[0:out_channels, 0:1]
                         ps[result_mgrid.p, result_mgrid.x] += result
 
-                result_mgrid = nl.mgrid[0:out_channels, 0:1]
-                i_oc = nl.arange(out_channels)
+                        # Store result (without bias) to out_tile
+                    ps_mgrid = nl.mgrid[0:out_channels, 0:1]
+                    i_oc = nl.arange(out_channels)
+                    out_tile[i_oc, out_h, out_w] = ps[ps_mgrid.p, 0]
 
-                out_tile[i_oc, out_h, out_w] = ps[result_mgrid.p, 0]
+                    # Write back to HBM with bias added
+                for oc in nl.affine_range(out_channels):
+                    X_out[b, oc, :, :] = nl.copy(out_tile[oc, :, :] + bias_tile[oc])
 
-        # X_out[b, :, :, :] = out_tile
-        i_oc = nl.arange(out_channels)[:, None, None]
-        X_out[b, i_oc, :, :] = nl.copy(out_tile[i_oc, :, :]) + bias_tile[i_oc, 0]
+                # result_mgrid = nl.mgrid[0:out_channels, 0:1]
+        #         i_oc = nl.arange(out_channels)
+        #
+        #         out_tile[i_oc, out_h, out_w] = ps[result_mgrid.p, 0]
+        #
+        # # X_out[b, :, :, :] = out_tile
+        # i_oc = nl.arange(out_channels)[:, None, None]
+        # X_out[b, i_oc, :, :] = nl.copy(out_tile[i_oc, :, :]) + bias_tile[i_oc, 0]
 
         print(f"[DEBUG] Batch {b} COMPLETED")
 
