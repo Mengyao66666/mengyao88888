@@ -41,22 +41,40 @@ class ConvModel(nn.Module):
 
         # rowNum: each row contains one patch (C*KH*KW elements)
         rowNum = out_h * out_w
+        h_indices = torch.arange(out_h, device=x.device)[:, None] * S  # (out_h, 1)
+        w_indices = torch.arange(out_w, device=x.device)[None, :] * S  # (1, out_w)
 
-        # patches shape: (N, out_h*out_w, C*KH*KW)
-        patches = torch.zeros(N, rowNum, C * KH * KW)
+        kh_indices = torch.arange(KH, device=x.device)[:, None, None]  # (KH, 1, 1)
+        kw_indices = torch.arange(KW, device=x.device)[None, :, None]  # (1, KW, 1)
 
-        # TO DO: Convert input (x) into shape (N, out_h*out_w, C*KH*KW). 
-        # Refer to Lecture 3 for implementing this operation.
+        # 广播得到所有位置：(KH, KW, out_h, out_w)
+        h_all = h_indices + kh_indices  # (KH, 1, out_h, 1) broadcast
+        w_all = w_indices + kw_indices  # (1, KW, 1, out_w) broadcast
 
-        idx = 0
-        for h in range(out_h):
-            for w in range(out_w):
-                h_start = h * S
-                w_start = w * S
-                # Extract patch: (N, C, KH, KW) -> flatten to (N, C*KH*KW)
-                patch = x_pad[:, :, h_start:h_start + KH, w_start:w_start + KW]
-                patches[:, idx, :] = patch.reshape(N, -1)
-                idx += 1
+        # 提取所有 patches: x_pad[:, :, h_all, w_all]
+        # 需要用高级索引
+        patches = x_pad[:, :, h_all, w_all]  # (N, C, KH, KW, out_h, out_w)
+
+        # Reshape 成 (N, out_h*out_w, C*KH*KW)
+        patches = patches.permute(0, 4, 5, 1, 2, 3)  # (N, out_h, out_w, C, KH, KW)
+        patches = patches.reshape(N, rowNum, C * KH * KW)
+
+        # # patches shape: (N, out_h*out_w, C*KH*KW)
+        # patches = torch.zeros(N, rowNum, C * KH * KW)
+        # # patches = torch.zeros(N, rowNum, C * KH * KW, device=x.device, dtype=x.dtype)
+        #
+        # # TO DO: Convert input (x) into shape (N, out_h*out_w, C*KH*KW).
+        # # Refer to Lecture 3 for implementing this operation.
+        #
+        # idx = 0
+        # for h in range(out_h):
+        #     for w in range(out_w):
+        #         h_start = h * S
+        #         w_start = w * S
+        #         # Extract patch: (N, C, KH, KW) -> flatten to (N, C*KH*KW)
+        #         patch = x_pad[:, :, h_start:h_start + KH, w_start:w_start + KW]
+        #         patches[:, idx, :] = patch.reshape(N, -1)
+        #         idx += 1
         
         # patches = ...
         return patches
