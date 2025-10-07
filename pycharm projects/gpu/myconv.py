@@ -39,33 +39,50 @@ class ConvModel(nn.Module):
         # Pad input
         x_pad = F.pad(x, (P, P, P, P))
 
+        # rowNum: each row contains one patch (C*KH*KW elements)
+        rowNum = out_h * out_w
+
+        # patches shape: (N, out_h*out_w, C*KH*KW)
+        patches = torch.zeros(N, rowNum, C * KH * KW)
+
         # TO DO: Convert input (x) into shape (N, out_h*out_w, C*KH*KW). 
         # Refer to Lecture 3 for implementing this operation.
 
-        rowNum =
+        idx = 0
+        for h in range(out_h):
+            for w in range(out_w):
+                h_start = h * S
+                w_start = w * S
+                # Extract patch: (N, C, KH, KW) -> flatten to (N, C*KH*KW)
+                patch = x_pad[:, :, h_start:h_start + KH, w_start:w_start + KW]
+                patches[:, idx, :] = patch.reshape(N, -1)
+                idx += 1
         
-        patches = ...
+        # patches = ...
         return patches
 
     def conv2d_manual(self, x):
         N = x.shape[0]
         C_out = self.out_channels
-        KH = KW = self.kernel_size
+        # KH = KW = self.kernel_size
 
         # TO DO: 1) convert input (x) into shape (N, out_h*out_w, C*KH*KW).
         cols = self.im2col_manual(x)
 
         # TO DO: 2) flatten self.weight into shape (C_out, C*KH*KW).
+        weight_flat = self.weight.reshape(C_out, -1)
 
         # TO DO: 3) perform tiled matmul after required reshaping is done.
+        out = torch.matmul(cols, weight_flat.T)
 
         # TO DO: 4) Add bias.
+        out = out + self.bias
 
         # TO DO: 5) reshape output into shape (N, C_out, out_h, out_w).
+        out = out.permute(0, 2, 1)  # (N, C_out, out_h*out_w)
+        out = out.reshape(N, C_out, self.out_h, self.out_w)
 
-
-
-        #return out
+        return out
 
     def forward(self, x):
         return self.conv2d_manual(x)
