@@ -100,34 +100,58 @@ def conv2d(X, W, bias):
                 # Accumulate over filter dimensions
                 for fh in nl.affine_range(filter_height):
                     for fw in nl.affine_range(filter_width):
-                        # Create indices for matrix multiply
-                        i_oc = nl.arange(out_channels)[:, None]  # [out_channels, 1]
-                        i_ic = nl.arange(in_channels)[None, :]  # [1, in_channels]
+                        # 使用 mgrid 创建索引网格
+                        weight_mgrid = nl.mgrid[0:out_channels, 0:in_channels]
+                        input_mgrid = nl.mgrid[0:in_channels, 0:1]
 
-                        # Extract weight slice: [out_channels, in_channels]
-                        weight_slice = nl.ndarray(
-                            (out_channels, in_channels),
-                            dtype=W.dtype,
-                            buffer=nl.sbuf
+                        # Load weight slice: [out_channels, in_channels]
+                        weight_slice = W_tile[weight_mgrid.p, weight_mgrid.x, fh, fw]
+
+                        # Load input slice: [in_channels, 1]
+                        input_slice = x_tile[input_mgrid.p, out_h + fh, out_w + fw]
+
+                        # Matrix multiply: [out_channels, in_channels] @ [in_channels, 1] -> [out_channels, 1]
+                        result = nisa.nc_matmul(
+                            weight_slice[weight_mgrid.p, weight_mgrid.x],
+                            input_slice[input_mgrid.p, input_mgrid.x]
                         )
-                        weight_slice[...] = W_tile[i_oc, i_ic, fh, fw]
 
-                        # Extract input slice: [in_channels, 1]
-                        input_slice = x_tile[i_ic, out_h + fh, out_w + fw]
+                        # Accumulate to PSUM
+                        result_mgrid = nl.mgrid[0:out_channels, 0:1]
+                        ps[result_mgrid.p, result_mgrid.x] += result
+                        # # Create indices for matrix multiply
+                        # i_oc = nl.arange(out_channels)[:, None]  # [out_channels, 1]
+                        # i_ic = nl.arange(in_channels)[None, :]  # [1, in_channels]
+                        #
+                        # # Extract weight slice: [out_channels, in_channels]
+                        # weight_slice = nl.ndarray(
+                        #     (out_channels, in_channels),
+                        #     dtype=W.dtype,
+                        #     buffer=nl.sbuf
+                        # )
+                        # weight_slice[...] = W_tile[i_oc, i_ic, fh, fw]
+                        #
+                        # # Extract input slice: [1, in_channels]
+                        # input_slice = x_tile[i_ic, out_h + fh, out_w + fw]
+                        #
+                        # # Matrix-vector multiply and accumulate
+                        # i_oc_out = nl.arange(out_channels)[:, None]
+                        # ps[i_oc_out, 0] += nisa.nc_matmul(
+                        #     weight_slice,  # [out_channels, in_channels]
+                        #     input_slice,
+                        #     transpose_x=False,
+                        #     transpose_y=True
+                        #     # [in_channels, 1]
+                        # )
 
-                        # Matrix-vector multiply and accumulate
-                        i_oc_out = nl.arange(out_channels)[:, None]
-                        ps[i_oc_out, 0] += nisa.nc_matmul(
-                            weight_slice,  # [out_channels, in_channels]
-                            input_slice,
-                            transpose_x=False,
-                            transpose_y=True
-                            # [in_channels, 1]
-                        )
 
                 # Add bias and store result
+                # i_oc = nl.arange(out_channels)
+                # out_tile[i_oc, out_h, out_w] = ps[i_oc, 0] + bias_tile[i_oc, 0]
+                result_mgrid = nl.mgrid[0:out_channels, 0:1]
                 i_oc = nl.arange(out_channels)
-                out_tile[i_oc, out_h, out_w] = ps[i_oc, 0] + bias_tile[i_oc, 0]
+
+                out_tile[i_oc, out_h, out_w] = ps[result_mgrid.p, 0] + bias_tile[i_oc, 0]
 
         X_out[b, :, :, :] = out_tile
 
