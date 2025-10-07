@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.profiler import profile, record_function, ProfilerActivity
+import torch._dynamo
 
 class ConvModel(nn.Module):
     def __init__(self, H, W, in_channels=3, out_channels=8, kernel_size=3, stride=1, padding=1):
