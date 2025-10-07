@@ -69,8 +69,8 @@ def conv2d(X, W, bias):
     )
     W_tile[...] = nl.load(W[:, :, :, :])
 
-    bias_tile = nl.ndarray((out_channels, 1), dtype=bias.dtype, buffer=nl.sbuf)
-    bias_tile[...] = nl.load(bias)
+    bias_tile = nl.ndarray((out_channels,), dtype=bias.dtype, buffer=nl.sbuf)
+    bias_tile[...] = nl.load(bias[:])
 
     # Process the images in batches
     for b in nl.affine_range(batch_size):
@@ -130,40 +130,9 @@ def conv2d(X, W, bias):
                         # Accumulate to PSUM
                         result_mgrid = nl.mgrid[0:out_channels, 0:1]
                         ps[result_mgrid.p, result_mgrid.x] += result
-                        # # Create indices for matrix multiply
-                        # i_oc = nl.arange(out_channels)[:, None]  # [out_channels, 1]
-                        # i_ic = nl.arange(in_channels)[None, :]  # [1, in_channels]
-                        #
-                        # # Extract weight slice: [out_channels, in_channels]
-                        # weight_slice = nl.ndarray(
-                        #     (out_channels, in_channels),
-                        #     dtype=W.dtype,
-                        #     buffer=nl.sbuf
-                        # )
-                        # weight_slice[...] = W_tile[i_oc, i_ic, fh, fw]
-                        #
-                        # # Extract input slice: [1, in_channels]
-                        # input_slice = x_tile[i_ic, out_h + fh, out_w + fw]
-                        #
-                        # # Matrix-vector multiply and accumulate
-                        # i_oc_out = nl.arange(out_channels)[:, None]
-                        # ps[i_oc_out, 0] += nisa.nc_matmul(
-                        #     weight_slice,  # [out_channels, in_channels]
-                        #     input_slice,
-                        #     transpose_x=False,
-                        #     transpose_y=True
-                        #     # [in_channels, 1]
-                        # )
 
-
-                # Add bias and store result
-                # i_oc = nl.arange(out_channels)
-                # out_tile[i_oc, out_h, out_w] = ps[i_oc, 0] + bias_tile[i_oc, 0]
                 result_mgrid = nl.mgrid[0:out_channels, 0:1]
                 i_oc = nl.arange(out_channels)
-
-                bias_vec = nl.ndarray((out_channels,), dtype=bias.dtype, buffer=nl.sbuf)
-                bias_vec[...] = bias_tile[i_oc, 0]
 
                 out_tile[i_oc, out_h, out_w] = ps[result_mgrid.p, 0] + bias_tile[i_oc]
 
