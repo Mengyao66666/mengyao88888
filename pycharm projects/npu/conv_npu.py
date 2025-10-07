@@ -69,8 +69,8 @@ def conv2d(X, W, bias):
     )
     W_tile[...] = nl.load(W[:, :, :, :])
 
-    bias_tile = nl.ndarray((out_channels,), dtype=bias.dtype, buffer=nl.sbuf)
-    bias_tile[...] = nl.load(bias[:])
+    bias_tile = nl.ndarray(shape=bias.shape, dtype=bias.dtype, buffer=nl.sbuf)
+    bias_tile[...] = nl.load(bias)
 
     # bias_tile = nl.ndarray((out_channels,), dtype=bias.dtype, buffer=nl.sbuf)
     # bias_tile[...] = nl.load(bias[:])
@@ -133,14 +133,15 @@ def conv2d(X, W, bias):
                         result_mgrid = nl.mgrid[0:out_channels, 0:1]
                         ps[result_mgrid.p, result_mgrid.x] += result
 
-                        # Store result (without bias) to out_tile
-                    ps_mgrid = nl.mgrid[0:out_channels, 0:1]
-                    i_oc = nl.arange(out_channels)
-                    out_tile[i_oc, out_h, out_w] = ps[ps_mgrid.p, 0]
+                        ps_mgrid = nl.mgrid[0:out_channels, 0:1]
+                        i_oc = nl.arange(out_channels)
+                        out_tile[i_oc, out_h, out_w] = nl.load(ps[ps_mgrid.p, 0])
 
-                    # Write back to HBM with bias added
-                for oc in nl.affine_range(out_channels):
-                    X_out[b, oc, :, :] = nl.copy(out_tile[oc, :, :] + bias_tile[oc])
+        # Write back to HBM with bias added
+        for oc in nl.affine_range(out_channels):
+            channel_data = out_tile[oc, :, :]
+            channel_with_bias = nl.add(channel_data, bias_tile[oc])
+            nl.store(X_out[b, oc, :, :], value=channel_with_bias)
 
                 # result_mgrid = nl.mgrid[0:out_channels, 0:1]
         #         i_oc = nl.arange(out_channels)
