@@ -104,12 +104,22 @@ def conv2d(X, W, bias):
                         weight_mgrid = nl.mgrid[0:out_channels, 0:in_channels]
                         input_mgrid = nl.mgrid[0:in_channels, 0:1]
 
+                        weight_slice = nl.ndarray(
+                            (out_channels, in_channels),
+                            dtype=W.dtype,
+                            buffer=nl.sbuf
+                        )
                         i_oc = nl.arange(out_channels)[:, None]
                         i_ic = nl.arange(in_channels)[None, :]
-                        weight_slice = nl.load(W_tile[i_oc, i_ic, fh, fw])
+                        weight_slice[...] = nl.load(W_tile[i_oc, i_ic, fh, fw])
 
+                        input_slice = nl.ndarray(
+                            (in_channels, 1),
+                            dtype=X.dtype,
+                            buffer=nl.sbuf
+                        )
                         i_ic_col = nl.arange(in_channels)[:, None]
-                        input_slice = nl.load(x_tile[i_ic_col, out_h + fh, out_w + fw])
+                        input_slice[...] = nl.load(x_tile[i_ic_col, out_h + fh, out_w + fw])
 
                         # 然后用 mgrid 索引做 matmul
                         result = nisa.nc_matmul(
