@@ -69,8 +69,12 @@ def conv2d(X, W, bias):
     )
     W_tile[...] = nl.load(W[:, :, :, :])
 
-    bias_tile = nl.ndarray((out_channels,), dtype=bias.dtype, buffer=nl.sbuf)
-    bias_tile[...] = nl.load(bias[:])
+    bias_tile = nl.ndarray((out_channels, 1), dtype=bias.dtype, buffer=nl.sbuf)
+    i_oc = nl.arange(out_channels)
+    bias_tile[i_oc, 0] = nl.load(bias[i_oc])
+
+    # bias_tile = nl.ndarray((out_channels,), dtype=bias.dtype, buffer=nl.sbuf)
+    # bias_tile[...] = nl.load(bias[:])
 
     # Process the images in batches
     for b in nl.affine_range(batch_size):
@@ -134,9 +138,11 @@ def conv2d(X, W, bias):
                 result_mgrid = nl.mgrid[0:out_channels, 0:1]
                 i_oc = nl.arange(out_channels)
 
-                out_tile[i_oc, out_h, out_w] = ps[result_mgrid.p, 0] + bias_tile[i_oc]
+                out_tile[i_oc, out_h, out_w] = ps[result_mgrid.p, 0]
 
-        X_out[b, :, :, :] = out_tile
+        # X_out[b, :, :, :] = out_tile
+        i_oc = nl.arange(out_channels)[:, None, None]
+        X_out[b, i_oc, :, :] = nl.copy(out_tile[i_oc, :, :]) + bias_tile[i_oc, 0]
 
         print(f"[DEBUG] Batch {b} COMPLETED")
 
