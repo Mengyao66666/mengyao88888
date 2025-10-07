@@ -113,18 +113,16 @@ def conv2d(X, W, bias):
                         weight_slice[...] = W_tile[i_oc, i_ic, fh, fw]
 
                         # Extract input slice: [in_channels, 1]
-                        input_slice = nl.ndarray(
-                            (in_channels, 1),
-                            dtype=X.dtype,
-                            buffer=nl.sbuf
-                        )
-                        input_slice[...] = x_tile[i_ic, out_h + fh, out_w + fw]
+                        input_slice = x_tile[i_ic, out_h + fh, out_w + fw]
 
                         # Matrix-vector multiply and accumulate
                         i_oc_out = nl.arange(out_channels)[:, None]
                         ps[i_oc_out, 0] += nisa.nc_matmul(
                             weight_slice,  # [out_channels, in_channels]
-                            input_slice  # [in_channels, 1]
+                            input_slice,
+                            transpose_x=False,
+                            transpose_y=True
+                            # [in_channels, 1]
                         )
 
                 # Add bias and store result
