@@ -105,10 +105,20 @@ def conv2d(X, W, bias):
                         i_ic = nl.arange(in_channels)[None, :]  # [1, in_channels]
 
                         # Extract weight slice: [out_channels, in_channels]
-                        weight_slice = W_tile[i_oc, i_ic, fh, fw]
+                        weight_slice = nl.ndarray(
+                            (out_channels, in_channels),
+                            dtype=W.dtype,
+                            buffer=nl.sbuf
+                        )
+                        weight_slice[...] = W_tile[i_oc, i_ic, fh, fw]
 
                         # Extract input slice: [in_channels, 1]
-                        input_slice = x_tile[i_ic, out_h + fh, out_w + fw]
+                        input_slice = nl.ndarray(
+                            (in_channels, 1),
+                            dtype=X.dtype,
+                            buffer=nl.sbuf
+                        )
+                        input_slice[...] = x_tile[i_ic, out_h + fh, out_w + fw]
 
                         # Matrix-vector multiply and accumulate
                         i_oc_out = nl.arange(out_channels)[:, None]
