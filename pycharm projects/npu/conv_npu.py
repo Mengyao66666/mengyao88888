@@ -162,7 +162,10 @@ def conv2d(X, W, bias):
                 result_mgrid = nl.mgrid[0:out_channels, 0:1]
                 i_oc = nl.arange(out_channels)
 
-                out_tile[i_oc, out_h, out_w] = ps[result_mgrid.p, 0] + bias_tile[i_oc, 0]
+                bias_vec = nl.ndarray((out_channels,), dtype=bias.dtype, buffer=nl.sbuf)
+                bias_vec[...] = bias_tile[i_oc, 0]
+
+                out_tile[i_oc, out_h, out_w] = ps[result_mgrid.p, 0] + bias_tile[i_oc]
 
         X_out[b, :, :, :] = out_tile
 
