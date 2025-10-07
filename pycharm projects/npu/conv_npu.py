@@ -100,17 +100,18 @@ def conv2d(X, W, bias):
                 # Accumulate over filter dimensions
                 for fh in nl.affine_range(filter_height):
                     for fw in nl.affine_range(filter_width):
-                        # 使用 mgrid 创建索引网格
+                        # 创建 mgrid
                         weight_mgrid = nl.mgrid[0:out_channels, 0:in_channels]
                         input_mgrid = nl.mgrid[0:in_channels, 0:1]
 
-                        # Load weight slice: [out_channels, in_channels]
-                        weight_slice = W_tile[weight_mgrid.p, weight_mgrid.x, fh, fw]
+                        i_oc = nl.arange(out_channels)[:, None]
+                        i_ic = nl.arange(in_channels)[None, :]
+                        weight_slice = nl.load(W_tile[i_oc, i_ic, fh, fw])
 
-                        # Load input slice: [in_channels, 1]
-                        input_slice = x_tile[input_mgrid.p, out_h + fh, out_w + fw]
+                        i_ic_col = nl.arange(in_channels)[:, None]
+                        input_slice = nl.load(x_tile[i_ic_col, out_h + fh, out_w + fw])
 
-                        # Matrix multiply: [out_channels, in_channels] @ [in_channels, 1] -> [out_channels, 1]
+                        # 然后用 mgrid 索引做 matmul
                         result = nisa.nc_matmul(
                             weight_slice[weight_mgrid.p, weight_mgrid.x],
                             input_slice[input_mgrid.p, input_mgrid.x]
