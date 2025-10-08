@@ -6,6 +6,9 @@ import neuronxcc.nki.language as nl
 import neuronxcc.nki.isa as nisa
 from neuronxcc.nki import baremetal
 
+import os
+os.environ["NEURON_CC_FLAGS"] = "--verbose"
+
 
 """
 A convolution kernel that you need to implement.
