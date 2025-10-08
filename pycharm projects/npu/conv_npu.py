@@ -89,7 +89,7 @@ def conv2d(X, W, bias):
         # x_tile[...] = nl.load(X[b, :, :, :])
 
         out_tile = nl.ndarray(
-            (out_channels, out_pool_height, out_pool_width),
+            (nl.par_dim(out_channels), out_pool_height, out_pool_width),
             dtype=nl.float32,
             buffer=nl.sbuf
         )
