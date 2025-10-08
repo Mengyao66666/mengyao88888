@@ -69,27 +69,22 @@ def conv2d(X, W, bias):
     c_in_pmax = nl.tile_size.pmax
     n_tiles_c_in = in_channels // c_in_pmax
 
-    W_tile = nl.load(W[:, :, :, :])
+    w = nl.load(W[:, :, :, :])
 
     bias_tile = nl.ndarray((out_channels, 1), dtype=bias.dtype, buffer=nl.sbuf)
 
-    i_oc = nl.arange(out_channels)[:, None]  # (out_channels, 1)
-    bias_tile[...] = nl.load(bias[i_oc])  # 广播 load
+    i_oc = nl.arange(out_channels)[:, None]
+    bias_tile[...] = nl.load(bias[i_oc])
 
     # Process the images in batches
     for b in nl.affine_range(batch_size):
 
-        x_tile = nl.load(X[b, :, :, :])
+        x = nl.load(X[b, :, :, :])
 
-        # out_tile = nl.ndarray(
-        #     (nl.par_dim(out_channels), out_pool_height, out_pool_width),
-        #     dtype=X_out.dtype,
-        #     buffer=nl.sbuf
-        # )
-        out_tile = nl.ndarray(
-            shape=(out_channels, out_pool_height, out_pool_width),
+        out = nl.ndarray(
+            (nl.par_dim(out_channels), out_pool_height, out_pool_width),
             dtype=X_out.dtype,
-            buffer=nl.sbuf
+            buffer=nl.sbuf,
         )
 
         for out_h in nl.affine_range(out_pool_height):
@@ -98,66 +93,56 @@ def conv2d(X, W, bias):
                 ps = nl.zeros(
                     shape=(out_channels, 1),
                     dtype=np.float32,
-                    buffer=nl.psum
+                    buffer=nl.psum,
+                    partitions=out_channels
                 )
 
-                # Accumulate over filter dimensions
                 for fh in nl.affine_range(filter_height):
                     for fw in nl.affine_range(filter_width):
-                        # 创建 mgrid
-                        weight_mgrid = nl.mgrid[0:out_channels, 0:in_channels]
+
+                        filter_mgrid = nl.mgrid[0:out_channels, 0:in_channels]
                         input_mgrid = nl.mgrid[0:in_channels, 0:1]
 
-                        weight_slice = nl.ndarray(
+                        filter_slice = nl.ndarray(
                             (out_channels, in_channels),
                             dtype=W.dtype,
-                            buffer=nl.sbuf
+                            buffer=nl.sbuf,
+                            partitions=out_channels
                         )
                         i_oc = nl.arange(out_channels)[:, None]
                         i_ic = nl.arange(in_channels)[None, :]
-                        weight_slice[...] = W_tile[i_oc, i_ic, fh, fw]
+                        filter_slice[...] = w[i_oc, i_ic, fh, fw]
 
                         input_slice = nl.ndarray(
                             (in_channels, 1),
                             dtype=X.dtype,
-                            buffer=nl.sbuf
+                            buffer=nl.sbuf,
+                            partitions=1
                         )
                         i_ic_col = nl.arange(in_channels)[:, None]
 
-                        input_slice[...] = x_tile[i_ic_col, out_h + fh, out_w + fw]
+                        input_slice[...] = x[i_ic_col, out_h + fh, out_w + fw]
 
-                        # 然后用 mgrid 索引做 matmul
                         result = nisa.nc_matmul(
-                            weight_slice[weight_mgrid.p, weight_mgrid.x],
+                            filter_slice[filter_mgrid.p, filter_mgrid.x],
                             input_slice[input_mgrid.p, input_mgrid.x]
                         )
 
-                        result_mgrid = nl.mgrid[0:out_channels, 0:1]
-                        ps[result_mgrid.p, result_mgrid.x] += result
+                        re_mgrid = nl.mgrid[0:out_channels, 0:1]
+                        ps[re_mgrid.p, re_mgrid.x] += result
 
                 ps_mgrid = nl.mgrid[0:out_channels, 0:1]
                 i_oc = nl.arange(out_channels)[:, None]
-                out_tile[i_oc, out_h, out_w] = nl.copy(ps[ps_mgrid.p, 0])
-                print(f"in_channels = {in_channels}")
-                print(f"input_height = {input_height}, input_width = {input_width}")
-                print(f"filter_height = {filter_height}, filter_width = {filter_width}")
-                print(f"out_pool_height = {out_pool_height}, out_pool_width = {out_pool_width}")
+                out[i_oc, out_h, out_w] = nl.copy(ps[ps_mgrid.p, 0])
 
-
-        # Write back to HBM with bias added
         for oc in nl.affine_range(out_channels):
-            channel_data = out_tile[oc:oc + 1, :, :]  # [1, out_pool_height, out_pool_width]
-            bias_val = bias_tile[oc:oc + 1, 0]  # [1]
+            channel_data = out[oc:oc + 1, :, :]
+            bias_val = bias_tile[oc:oc + 1, 0]
 
-            # nl.add 现在可以工作了
             channel_with_bias = nl.add(channel_data, bias_val)
 
             nl.store(X_out[b, oc:oc + 1, :, :], value=channel_with_bias)
 
-
-        print(f"[DEBUG] Batch {b} COMPLETED")
-
-    print(f"[DEBUG] All batches COMPLETED, returning X_out")
     return X_out
 
 
