@@ -123,6 +123,7 @@ def conv2d(X, W, bias):
                             buffer=nl.sbuf
                         )
                         i_ic_col = nl.arange(in_channels)[:, None]
+
                         input_slice[...] = x_tile[i_ic_col, out_h + fh, out_w + fw]
 
                         # 然后用 mgrid 索引做 matmul
@@ -137,6 +138,10 @@ def conv2d(X, W, bias):
                 ps_mgrid = nl.mgrid[0:out_channels, 0:1]
                 i_oc = nl.arange(out_channels)[:, None]
                 out_tile[i_oc, out_h, out_w] = nl.copy(ps[ps_mgrid.p, 0])
+                print(f"in_channels = {in_channels}")
+                print(f"input_height = {input_height}, input_width = {input_width}")
+                print(f"filter_height = {filter_height}, filter_width = {filter_width}")
+                print(f"out_pool_height = {out_pool_height}, out_pool_width = {out_pool_width}")
 
 
         # Write back to HBM with bias added
