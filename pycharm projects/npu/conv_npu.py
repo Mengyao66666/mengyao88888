@@ -145,9 +145,10 @@ def conv2d(X, W, bias):
                         result_mgrid = nl.mgrid[0:out_channels, 0:1]
                         ps[result_mgrid.p, result_mgrid.x] += result
 
-                        ps_mgrid = nl.mgrid[0:out_channels, 0:1]
-                        i_oc = nl.arange(out_channels)[:, None]
-                        out_tile[i_oc, out_h, out_w] = nl.copy(ps[ps_mgrid.p, 0])
+                ps_mgrid = nl.mgrid[0:out_channels, 0:1]
+                i_oc = nl.arange(out_channels)[:, None]
+                out_tile[i_oc, out_h, out_w] = nl.copy(ps[ps_mgrid.p, 0])
+
 
         # Write back to HBM with bias added
         for oc in nl.affine_range(out_channels):
@@ -162,7 +163,7 @@ def conv2d(X, W, bias):
 
         print(f"[DEBUG] Batch {b} COMPLETED")
 
-        print(f"[DEBUG] All batches COMPLETED, returning X_out")
+    print(f"[DEBUG] All batches COMPLETED, returning X_out")
     return X_out
 
 
