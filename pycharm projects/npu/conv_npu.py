@@ -69,17 +69,18 @@ def conv2d(X, W, bias):
     c_in_pmax = nl.tile_size.pmax
     n_tiles_c_in = in_channels // c_in_pmax
 
-    W_tile = nl.ndarray(
-        (out_channels, in_channels, filter_height, filter_width),
-        dtype=W.dtype,
-        buffer=nl.sbuf
-    )
+    # W_tile = nl.ndarray(
+    #     (out_channels, in_channels, filter_height, filter_width),
+    #     dtype=W.dtype,
+    #     buffer=nl.sbuf
+    # )
     # W_tile[...] = nl.load(W[:, :, :, :])
+    W_tile = nl.load(W[:, :, :, :])
 
     # bias_tile = nl.ndarray(shape=bias.shape, dtype=bias.dtype, buffer=nl.sbuf)
-    bias_tile = nl.ndarray(shape=(out_channels, 1), dtype=bias.dtype, buffer=nl.sbuf)
-    # bias_2d = bias.reshape(out_channels, 1)
-    # bias_tile[...] = nl.load(bias_tile)
+    # bias_tile = nl.ndarray(shape=(out_channels, 1), dtype=bias.dtype, buffer=nl.sbuf)
+
+    bias_tile = nl.load(bias.reshape(out_channels, 1))
 
     # bias_tile = nl.ndarray((out_channels,), dtype=bias.dtype, buffer=nl.sbuf)
     # bias_tile[...] = nl.load(bias[:])
@@ -88,83 +89,114 @@ def conv2d(X, W, bias):
     for b in nl.affine_range(batch_size):
 
         # 所有窗口都加载到SBUF，并且展开。每一行都是in_channels * filter_height * filter_width的长度，然后展开
-        x_tile = nl.ndarray(
-            (in_channels, input_height, input_width),
-            dtype=X.dtype,
-            buffer=nl.sbuf
-        )
+        # x_tile = nl.ndarray(
+        #     (in_channels, input_height, input_width),
+        #     dtype=X.dtype,
+        #     buffer=nl.sbuf
+        # )
         # x_tile[...] = nl.load(X[b, :, :, :])
-
-        out_tile = nl.ndarray(
-            (nl.par_dim(out_channels), out_pool_height, out_pool_width),
-            dtype=nl.float32,
-            buffer=nl.sbuf
-        )
-
-        ps = nl.zeros(
-            (nl.par_dim(out_channels), 1),
-            dtype=nl.float32,
-            buffer=nl.psum
-        )
-
-        for out_h in nl.affine_range(out_pool_height):
-            for out_w in nl.affine_range(out_pool_width):
-
-                ps[:, :] = 0.0
-
-                # Accumulate over filter dimensions
-                for fh in nl.affine_range(filter_height):
-                    for fw in nl.affine_range(filter_width):
-                        # 创建 mgrid
-                        weight_mgrid = nl.mgrid[0:out_channels, 0:in_channels]
-                        input_mgrid = nl.mgrid[0:in_channels, 0:1]
-
-                        weight_slice = nl.ndarray(
-                            (out_channels, in_channels),
-                            dtype=W.dtype,
-                            buffer=nl.sbuf
-                        )
-                        i_oc = nl.arange(out_channels)[:, None]
-                        i_ic = nl.arange(in_channels)[None, :]
-                        weight_slice[...] = W_tile[i_oc, i_ic, fh, fw]
-
-                        input_slice = nl.ndarray(
-                            (in_channels, 1),
-                            dtype=X.dtype,
-                            buffer=nl.sbuf
-                        )
-                        i_ic_col = nl.arange(in_channels)[:, None]
-                        input_slice[...] = x_tile[i_ic_col, out_h + fh, out_w + fw]
-
-                        # 然后用 mgrid 索引做 matmul
-                        result = nisa.nc_matmul(
-                            weight_slice[weight_mgrid.p, weight_mgrid.x],
-                            input_slice[input_mgrid.p, input_mgrid.x]
-                        )
-
-                        result_mgrid = nl.mgrid[0:out_channels, 0:1]
-                        ps[result_mgrid.p, result_mgrid.x] += result
-
-                ps_mgrid = nl.mgrid[0:out_channels, 0:1]
-                i_oc = nl.arange(out_channels)[:, None]
-                out_tile[i_oc, out_h, out_w] = nl.copy(ps[ps_mgrid.p, 0])
-
-
-        # Write back to HBM with bias added
+        
         for oc in nl.affine_range(out_channels):
-            channel_data = out_tile[oc:oc + 1, :, :]  # [1, out_pool_height, out_pool_width]
-            bias_val = bias_tile[oc:oc + 1, 0]  # [1]
+            for oh in nl.affine_range(out_height):
 
-            # nl.add 现在可以工作了
-            channel_with_bias = nl.add(channel_data, bias_val)
+                # 分配一整行的累加器
+                row_result = nl.ndarray((1, out_width), dtype=nl.float32, buffer=nl.sbuf)
+                row_result[0, :] = 0.0
 
-            nl.store(X_out[b, oc:oc + 1, :, :], value=channel_with_bias)
+                for ic in nl.affine_range(in_channels):
+                    for fh in nl.affine_range(filter_height):
+                        for fw in nl.affine_range(filter_width):
+                            # Load weight (标量，但要是 2D)
+                            w = nl.load(W[oc:oc + 1, ic:ic + 1, fh:fh + 1, fw:fw + 1])  # [1, 1]
+
+                            # Load input row
+                            x_row = nl.load(
+                                X[b:b + 1, ic:ic + 1, oh + fh:oh + fh + 1, fw:fw + out_width])  # [1, out_width]
+
+                            # w * x_row 会广播成 [1, out_width]
+                            prod = nl.multiply(w, x_row)
+                            row_result = nl.add(row_result, prod)
+
+                # 加 bias
+                b_val = nl.load(bias[oc:oc + 1])  # [1]
+                row_with_bias = nl.add(row_result, b_val)
+
+                # Store
+                nl.store(X_out[b:b + 1, oc:oc + 1, oh:oh + 1, 0:out_width], value=row_with_bias)
+
+        return X_out
 
 
-        print(f"[DEBUG] Batch {b} COMPLETED")
-
-    print(f"[DEBUG] All batches COMPLETED, returning X_out")
-    return X_out
+    #     x_tile = nl.load(X[b, :, :, :])
+    #
+    #     out_tile = nl.ndarray(
+    #         (nl.par_dim(out_channels), out_pool_height, out_pool_width),
+    #         dtype=nl.float32,
+    #         buffer=nl.sbuf
+    #     )
+    #
+    #     for out_h in nl.affine_range(out_pool_height):
+    #         for out_w in nl.affine_range(out_pool_width):
+    #
+    #             ps = nl.zeros(
+    #                 (nl.par_dim(out_channels), 1),
+    #                 dtype=nl.float32,
+    #                 buffer=nl.psum
+    #             )
+    #
+    #             # Accumulate over filter dimensions
+    #             for fh in nl.affine_range(filter_height):
+    #                 for fw in nl.affine_range(filter_width):
+    #                     # 创建 mgrid
+    #                     weight_mgrid = nl.mgrid[0:out_channels, 0:in_channels]
+    #                     input_mgrid = nl.mgrid[0:in_channels, 0:1]
+    #
+    #                     weight_slice = nl.ndarray(
+    #                         (out_channels, in_channels),
+    #                         dtype=W.dtype,
+    #                         buffer=nl.sbuf
+    #                     )
+    #                     i_oc = nl.arange(out_channels)[:, None]
+    #                     i_ic = nl.arange(in_channels)[None, :]
+    #                     weight_slice[...] = W_tile[i_oc, i_ic, fh, fw]
+    #
+    #                     input_slice = nl.ndarray(
+    #                         (in_channels, 1),
+    #                         dtype=X.dtype,
+    #                         buffer=nl.sbuf
+    #                     )
+    #                     i_ic_col = nl.arange(in_channels)[:, None]
+    #                     input_slice[...] = x_tile[i_ic_col, out_h + fh, out_w + fw]
+    #
+    #                     # 然后用 mgrid 索引做 matmul
+    #                     result = nisa.nc_matmul(
+    #                         weight_slice[weight_mgrid.p, weight_mgrid.x],
+    #                         input_slice[input_mgrid.p, input_mgrid.x]
+    #                     )
+    #
+    #                     result_mgrid = nl.mgrid[0:out_channels, 0:1]
+    #                     ps[result_mgrid.p, result_mgrid.x] += result
+    #
+    #             ps_mgrid = nl.mgrid[0:out_channels, 0:1]
+    #             i_oc = nl.arange(out_channels)[:, None]
+    #             out_tile[i_oc, out_h, out_w] = nl.copy(ps[ps_mgrid.p, 0])
+    #
+    #
+    #     # Write back to HBM with bias added
+    #     for oc in nl.affine_range(out_channels):
+    #         channel_data = out_tile[oc:oc + 1, :, :]  # [1, out_pool_height, out_pool_width]
+    #         bias_val = bias_tile[oc:oc + 1, 0]  # [1]
+    #
+    #         # nl.add 现在可以工作了
+    #         channel_with_bias = nl.add(channel_data, bias_val)
+    #
+    #         nl.store(X_out[b, oc:oc + 1, :, :], value=channel_with_bias)
+    #
+    #
+    #     print(f"[DEBUG] Batch {b} COMPLETED")
+    #
+    # print(f"[DEBUG] All batches COMPLETED, returning X_out")
+    # return X_out
 
 
 
