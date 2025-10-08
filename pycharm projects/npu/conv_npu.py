@@ -136,7 +136,7 @@ def conv2d(X, W, bias):
                         ps[result_mgrid.p, result_mgrid.x] += result
 
                         ps_mgrid = nl.mgrid[0:out_channels, 0:1]
-                        i_oc = nl.arange(out_channels)
+                        i_oc = nl.arange(out_channels)[:, None]
                         out_tile[i_oc, out_h, out_w] = nl.copy(ps[ps_mgrid.p, 0])
 
         # Write back to HBM with bias added
