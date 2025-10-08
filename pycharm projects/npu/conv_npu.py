@@ -141,11 +141,18 @@ def conv2d(X, W, bias):
 
         # Write back to HBM with bias added
         for oc in nl.affine_range(out_channels):
-            channel_data = out_tile[oc, :, :]
-            bias_val = bias_tile[oc:oc + 1, 0]  # 返回形状 [1]
+            channel_data = out_tile[oc:oc + 1, :, :]  # [1, out_pool_height, out_pool_width]
+            bias_val = bias_tile[oc:oc + 1, 0]  # [1]
 
+            # nl.add 现在可以工作了
             channel_with_bias = nl.add(channel_data, bias_val)
-            nl.store(X_out[b, oc, :, :], value=channel_with_bias)
+
+            nl.store(X_out[b, oc:oc + 1, :, :], value=channel_with_bias)
+            # channel_data = out_tile[oc, :, :]
+            # bias_val = bias_tile[oc:oc + 1, 0]  # 返回形状 [1]
+            #
+            # channel_with_bias = nl.add(channel_data, bias_val)
+            # nl.store(X_out[b, oc, :, :], value=channel_with_bias)
             # channel_with_bias = nl.add(channel_data, bias_tile[oc])
             # nl.store(X_out[b, oc, :, :], value=channel_with_bias)
 
