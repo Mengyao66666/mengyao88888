@@ -69,43 +69,25 @@ def conv2d(X, W, bias):
     c_in_pmax = nl.tile_size.pmax
     n_tiles_c_in = in_channels // c_in_pmax
 
-    # W_tile = nl.ndarray(
-    #     (out_channels, in_channels, filter_height, filter_width),
-    #     dtype=W.dtype,
-    #     buffer=nl.sbuf
-    # )
-    # W_tile[...] = nl.load(W[:, :, :, :])
     W_tile = nl.load(W[:, :, :, :])
-
-    # bias_tile = nl.ndarray(shape=bias.shape, dtype=bias.dtype, buffer=nl.sbuf)
-    # bias_tile = nl.ndarray(shape=(out_channels, 1), dtype=bias.dtype, buffer=nl.sbuf)
-    # print(bias.shape)
-
-    # bias_tile = nl.load(bias.reshape(out_channels, 1))
 
     bias_tile = nl.ndarray((out_channels, 1), dtype=bias.dtype, buffer=nl.sbuf)
 
     i_oc = nl.arange(out_channels)[:, None]  # (out_channels, 1)
     bias_tile[...] = nl.load(bias[i_oc])  # 广播 load
 
-    # bias_tile = nl.ndarray((out_channels,), dtype=bias.dtype, buffer=nl.sbuf)
-    # bias_tile[...] = nl.load(bias[:])
-
     # Process the images in batches
     for b in nl.affine_range(batch_size):
 
-        # 所有窗口都加载到SBUF，并且展开。每一行都是in_channels * filter_height * filter_width的长度，然后展开
-        # x_tile = nl.ndarray(
-        #     (in_channels, input_height, input_width),
-        #     dtype=X.dtype,
-        #     buffer=nl.sbuf
-        # )
-        # x_tile[...] = nl.load(X[b, :, :, :])
-
         x_tile = nl.load(X[b, :, :, :])
 
+        # out_tile = nl.ndarray(
+        #     (nl.par_dim(out_channels), out_pool_height, out_pool_width),
+        #     dtype=X_out.dtype,
+        #     buffer=nl.sbuf
+        # )
         out_tile = nl.ndarray(
-            (nl.par_dim(out_channels), out_pool_height, out_pool_width),
+            shape=(out_channels, out_pool_height, out_pool_width),
             dtype=X_out.dtype,
             buffer=nl.sbuf
         )
@@ -114,7 +96,7 @@ def conv2d(X, W, bias):
             for out_w in nl.affine_range(out_pool_width):
 
                 ps = nl.zeros(
-                    (nl.par_dim(out_channels), 1),
+                    shape=(out_channels, 1),
                     dtype=np.float32,
                     buffer=nl.psum
                 )
