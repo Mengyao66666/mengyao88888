@@ -94,7 +94,6 @@ def conv2d(X, W, bias):
                     shape=(out_channels, 1),
                     dtype=np.float32,
                     buffer=nl.psum,
-                    partitions=out_channels
                 )
 
                 for fh in nl.affine_range(filter_height):
